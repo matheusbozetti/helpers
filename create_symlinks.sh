@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Using the script
-#    curl -sSL https://raw.githubusercontent.com/matheusbozetti/helpers/create_symlinks.sh | bash
+#    curl -sSL https://raw.githubusercontent.com/matheusbozetti/helpers/main/create_symlinks.sh | bash
 # OR
-#    wget -qO- https://raw.githubusercontent.com/matheusbozetti/helpers/create_symlinks.sh | bash
+#    wget -qO- https://raw.githubusercontent.com/matheusbozetti/helpers/main/create_symlinks.sh | bash
 
 # Source dir
 source_dir="/etc/nginx/sites-available"
