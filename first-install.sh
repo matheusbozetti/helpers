@@ -116,9 +116,29 @@ set_us_keyboard
 
 echo "----> Installing ZSH"
 apt_install zsh
-if [ "$(getent passwd "$USER" | cut -d: -f7)" != "$(command -v zsh)" ]; then
-	chsh -s "$(command -v zsh)"
-fi
+set_default_shell_zsh() {
+	local zsh_path
+	zsh_path="$(command -v zsh)"
+	if [ "$(getent passwd "$USER" | cut -d: -f7)" = "$zsh_path" ]; then
+		return 0
+	fi
+	if grep -q "^$USER:" /etc/passwd; then
+		# Usuário local: chsh funciona normalmente
+		sudo chsh -s "$zsh_path" "$USER"
+	elif has sss_override && systemctl is-active --quiet sssd; then
+		# Usuário de domínio (AD/LDAP via SSSD) não está em /etc/passwd e o chsh falha
+		# ("user not found"). Sobrescreve o shell localmente pelo SSSD.
+		sudo sss_override user-add "$USER" -s "$zsh_path"
+		sudo systemctl restart sssd
+	else
+		# Último recurso: bash abre o zsh em sessões interativas
+		echo "   Não foi possível alterar o shell padrão; usando 'exec zsh' no ~/.bashrc."
+		if ! grep -q 'exec zsh' "$HOME/.bashrc" 2>/dev/null; then
+			printf '\n# Abre o zsh (shell padrão não pôde ser alterado)\n[[ $- == *i* ]] && [ -x %s ] && exec %s\n' "$zsh_path" "$zsh_path" >>"$HOME/.bashrc"
+		fi
+	fi
+}
+set_default_shell_zsh
 
 echo "----> Installing CLI tools (eza, bat, ripgrep, fd, zoxide, delta, dig, jq, httpie, mkcert)"
 # Usados pelos aliases/fzf/git config do dev-env
