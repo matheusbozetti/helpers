@@ -294,18 +294,33 @@ read -r -p "   Caminho de um perfil .ovpn para importar (Enter para pular): " OV
 OVPN_FILE="${OVPN_FILE/#\~/$HOME}"
 if [ -n "$OVPN_FILE" ] && [ -f "$OVPN_FILE" ]; then
 	VPN_NAME="$(basename "$OVPN_FILE" .ovpn)"
-	if nmcli -t -f NAME connection show | grep -qxF "$VPN_NAME"; then
-		echo "   VPN \"$VPN_NAME\" já existe, pulando."
+	if nmcli -t -f NAME,TYPE connection show | grep -qxF "$VPN_NAME:vpn"; then
+		echo "   VPN \"$VPN_NAME\" já existe, pulando importação."
 	else
 		nmcli connection import type openvpn file "$OVPN_FILE" >/dev/null
-		# OpenVPN 2.6 só negocia ciphers GCM por padrão; servidores (ex.: Pritunl)
-		# com AES-*-CBC conectam mas caem/não trafegam. Libera os CBC como fallback.
-		nmcli connection modify "$VPN_NAME" +vpn.data "data-ciphers=AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-256-CBC:AES-128-CBC"
 		echo "   VPN \"$VPN_NAME\" importada. Conecte pelo menu de rede (canto superior direito)."
 	fi
 elif [ -n "$OVPN_FILE" ]; then
 	echo "   Arquivo não encontrado: $OVPN_FILE (pulando)"
 fi
+
+# Ajusta todos os perfis OpenVPN do NetworkManager (importados agora ou antes).
+# Usa o UUID porque o nome pode colidir com outra conexão (ex.: Wi-Fi com o mesmo nome).
+# - data-ciphers: OpenVPN 2.6 só negocia GCM por padrão; servidores Pritunl com
+#   AES-*-CBC conectam mas caem/não trafegam. Libera os CBC como fallback.
+# - never-default: o servidor Pritunl é split tunnel, mas o NetworkManager instala
+#   rota default pela VPN; aí toda a internet (Discord, Claude CLI...) cai no túnel
+#   e é descartada no servidor. Com isso só as rotas empurradas pelo Pritunl vão pela VPN.
+# - dns-search ~compute.internal: o DNS da VPC (172.31.0.2) passa a responder só
+#   pelos nomes internos da AWS, em vez de capturar todo o DNS da máquina (lento).
+nmcli -t -f UUID,TYPE connection show | awk -F: '$2=="vpn"{print $1}' | while read -r VPN_UUID; do
+	[ "$(nmcli -g vpn.service-type connection show "$VPN_UUID")" = "org.freedesktop.NetworkManager.openvpn" ] || continue
+	nmcli connection modify "$VPN_UUID" \
+		+vpn.data "data-ciphers=AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-256-CBC:AES-128-CBC" \
+		ipv4.never-default yes ipv6.never-default yes \
+		ipv4.dns-search "~compute.internal"
+	echo "   VPN \"$(nmcli -g connection.id connection show "$VPN_UUID")\" configurada (split tunnel, ciphers CBC, DNS só para AWS)."
+done
 
 echo "----> Raising inotify limits (file watchers: Vite, Next, tsc...)"
 printf 'fs.inotify.max_user_watches=524288\nfs.inotify.max_user_instances=1024\n' |
@@ -381,15 +396,6 @@ echo "   - Azure DevOps: User settings > SSH public keys > + New Key"
 echo
 cat "$SSH_KEY.pub"
 echo
-
-echo
-echo "================ VPN (OpenVPN/Pritunl) ================"
-echo "   Se importar um .ovpn manualmente e a VPN conectar mas cair ou não trafegar,"
-echo "   libere os ciphers CBC (troque <NOME_DA_VPN>; liste com: nmcli connection show):"
-echo
-echo '   nmcli connection modify "<NOME_DA_VPN>" +vpn.data "data-ciphers=AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-256-CBC:AES-128-CBC"'
-echo
-echo "   Depois desconecte e conecte novamente a VPN pelo menu de rede."
 
 echo
 echo "Instalação concluída! Faça logout/login (ou reinicie) para aplicar o ZSH e o DOCKER_HOST do Podman."
