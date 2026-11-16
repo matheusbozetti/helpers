@@ -339,18 +339,17 @@ fi
 # - never-default: o servidor Pritunl é split tunnel, mas o NetworkManager instala
 #   rota default pela VPN; aí toda a internet (Discord, Claude CLI...) cai no túnel
 #   e é descartada no servidor. Com isso só as rotas empurradas pelo Pritunl vão pela VPN.
-# - dns-search: o DNS da VPC (172.31.0.2) responde só pelos nomes da AWS, em vez de
-#   capturar todo o DNS da máquina (lento). ~internal cobre zonas privadas do Route 53
-#   (ex.: observe.internal) e *.compute.internal; ~rds.amazonaws.com faz o RDS resolver
-#   para o IP privado (pelo DNS público ele volta o IP público e sai fora do túnel);
-#   ~compute.amazonaws.com porque o RDS responde com CNAME ec2-*.compute.amazonaws.com.
+# - dns-search ~.: com a VPN conectada, todo o DNS vai para o resolver da VPC
+#   (172.31.0.2), como o cliente Pritunl faz no Windows. Assim zonas privadas do
+#   Route 53 (ex.: observe.internal) e o RDS (IP privado) resolvem sem lista de
+#   domínios. Só o DNS passa pela VPN; o tráfego segue as rotas (split tunnel).
 nmcli -t -f UUID,TYPE connection show | awk -F: '$2=="vpn"{print $1}' | while read -r VPN_UUID; do
 	[ "$(nmcli -g vpn.service-type connection show "$VPN_UUID")" = "org.freedesktop.NetworkManager.openvpn" ] || continue
 	nmcli connection modify "$VPN_UUID" \
 		+vpn.data "data-ciphers=AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-256-CBC:AES-128-CBC" \
 		ipv4.never-default yes ipv6.never-default yes \
-		ipv4.dns-search "~internal ~rds.amazonaws.com ~compute.amazonaws.com"
-	echo "   VPN \"$(nmcli -g connection.id connection show "$VPN_UUID")\" configurada (split tunnel, ciphers CBC, DNS só para AWS)."
+		ipv4.dns-search "~."
+	echo "   VPN \"$(nmcli -g connection.id connection show "$VPN_UUID")\" configurada (split tunnel, ciphers CBC, DNS pela VPC)."
 done
 
 echo "----> Raising inotify limits (file watchers: Vite, Next, tsc...)"
