@@ -196,6 +196,25 @@ fi
 echo "----> Installing Flameshot, tmux, lsd, fzf"
 apt_install flameshot tmux lsd fzf
 
+echo "----> Binding Print Screen to Flameshot"
+# Libera a tecla Print da captura nativa do GNOME e cria um atalho customizado
+# para o Flameshot. Idempotente: reutiliza o slot "flameshot" se já existir.
+gsettings set org.gnome.shell.keybindings show-screenshot-ui "[]"
+FS_KEY="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/flameshot/"
+FS_LIST="$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)"
+if [[ "$FS_LIST" != *"$FS_KEY"* ]]; then
+	if [[ "$FS_LIST" == "@as []" || "$FS_LIST" == "[]" ]]; then
+		FS_LIST="['$FS_KEY']"
+	else
+		FS_LIST="${FS_LIST%]}, '$FS_KEY']"
+	fi
+	gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$FS_LIST"
+fi
+FS_SCHEMA="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$FS_KEY"
+gsettings set "$FS_SCHEMA" name "Flameshot"
+gsettings set "$FS_SCHEMA" command "flameshot gui"
+gsettings set "$FS_SCHEMA" binding "Print"
+
 echo "----> Installing dust"
 if ! already has dust; then
 	curl -fsSL https://raw.githubusercontent.com/bootandy/dust/refs/heads/master/install.sh | bash
