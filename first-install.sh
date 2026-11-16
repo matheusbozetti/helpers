@@ -212,8 +212,17 @@ if [[ "$FS_LIST" != *"$FS_KEY"* ]]; then
 fi
 FS_SCHEMA="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$FS_KEY"
 gsettings set "$FS_SCHEMA" name "Flameshot"
-gsettings set "$FS_SCHEMA" command "flameshot gui"
+# No Wayland o GNOME identifica o app pelo scope do systemd; o systemd-run garante
+# o app id "org.flameshot.Flameshot" (que recebe a permissão abaixo). Sem isso, o
+# Flameshot herda o scope de quem o iniciou e a captura falha ("Unable to capture screen").
+gsettings set "$FS_SCHEMA" command "sh -c 'exec systemd-run --user --scope --quiet --unit=app-gnome-org.flameshot.Flameshot-\$\$.scope flameshot gui'"
 gsettings set "$FS_SCHEMA" binding "Print"
+# Permite ao Flameshot capturar a tela pelo portal (xdg-desktop-portal) sem diálogo.
+gdbus call --session --dest org.freedesktop.impl.portal.PermissionStore \
+	--object-path /org/freedesktop/impl/portal/PermissionStore \
+	--method org.freedesktop.impl.portal.PermissionStore.SetPermission \
+	screenshot true screenshot 'org.flameshot.Flameshot' "['yes']" >/dev/null ||
+	echo "   Não foi possível liberar a captura do Flameshot no portal (rode dentro da sessão gráfica)."
 
 echo "----> Installing dust"
 if ! already has dust; then
